@@ -42,13 +42,15 @@ Build a remastered Debian 13 (Trixie) ISO with a baked-in preseed file for fully
 - isolinux: timeout=1 (0.1s, minimum non-zero value)
 - Both text and graphical installer paths work fully unattended
 - Dynamic disk selection via `partman/early_command` (smallest non-USB disk)
-- Partition confirmation prompt before writing (safety net)
+- Fully unattended partitioning (`partman/confirm` + `partman/confirm_nooverwrite` enabled)
 - Locale, keyboard, network, hostname, timezone, partitioning, user account, GRUB — all preseed correctly
 - Standard task enabled (`tasksel tasksel/first multiselect standard`) — full baseline CLI system (man-db, less, bash-completion, file, lsof, pciutils, ca-certificates, etc.)
 - Extra packages via pkgsel/include: openssh-server, sudo, curl, wget, git, vim, htop (no desktop/GNOME)
 - late_command: root SSH enabled, jderose sudoers, authorized_keys for both jderose and root
 - NTP clock sync during install (fixes bad BIOS clock, ensures correct time from first boot)
 - IPv6 disabled on installed system (GRUB_CMDLINE_LINUX="ipv6.disable=1" + update-grub)
+- Instant GRUB boot on installed system (GRUB_TIMEOUT=0 + GRUB_TIMEOUT_STYLE=hidden via late_command)
+- Remote reinstall via `efibootmgr --bootnext` (no physical access needed)
 - Works with both DVD and netinst ISOs (netinst is default)
 
 ## Boot Parameters
@@ -130,9 +132,9 @@ d-i partman-auto/method string regular
 d-i partman-auto/choose_recipe select atomic
 d-i partman-partitioning/confirm_write_new_label boolean true
 d-i partman/choose_partition select finish
-# Uncomment to auto-confirm partitioning (fully unattended):
-#d-i partman/confirm boolean true
-#d-i partman/confirm_nooverwrite boolean true
+# Auto-confirm partitioning (fully unattended):
+d-i partman/confirm boolean true
+d-i partman/confirm_nooverwrite boolean true
 d-i partman-efi/non_efi_system boolean true
 
 ### Base system
@@ -161,6 +163,7 @@ d-i grub-installer/force-efi-extra-removable boolean true
 # - jderose NOPASSWD sudo
 # - authorized_keys for jderose and root
 # - IPv6 disable (GRUB_CMDLINE_LINUX + update-grub)
+# - Instant GRUB boot (GRUB_TIMEOUT=0 + GRUB_TIMEOUT_STYLE=hidden)
 
 ### Finish
 d-i cdrom-detect/eject boolean true
@@ -184,6 +187,32 @@ Steps:
 4. `patch_bootloader` — sed on grub.cfg, txt.cfg, gtk.cfg, isolinux.cfg (lib/patch-bootloader.sh)
 5. `rebuild_iso` — xorriso mkisofs hybrid MBR+EFI (lib/remaster.sh)
 6. Optionally dd to USB_DEVICE with `conv=fsync`
+
+## Remote Reinstall Workflow
+No physical access needed — just a USB with the preseed ISO plugged into the target.
+
+```bash
+# 1. Build the ISO on father
+./build --quiet
+
+# 2. Write to USB on father (USB A at /dev/sda)
+sudo dd if=iso/debian-13-preseed.iso of=/dev/sda bs=4M conv=fsync status=progress
+
+# 3. Move USB to mother, then from father:
+ssh mother "sudo efibootmgr --bootnext 000A"   # set USB as next boot (one-shot)
+ssh mother "sudo systemctl reboot"              # reboot into installer
+
+# 4. Wait ~10-15 min, then verify:
+ssh-keygen -R mother                            # clear old host key (new install = new keys)
+ssh -o StrictHostKeyChecking=accept-new mother   # accept new key and connect
+```
+
+EFI boot entries on mother (for reference):
+- `0001` — debian (default, installed system)
+- `000A` — USB DISK 3.0 PART 1 (CDROM/ISO mode — this is the one to use)
+- `000B` — USB DISK 3.0 PART 0 (MBR partition)
+
+`--bootnext` is one-shot: the firmware clears it after use, so if the install fails, next reboot goes back to the existing system.
 
 ## Planned Improvements
 - YAML host config templating (`generate-preseed.sh` + `preseed.template`)
@@ -214,3 +243,5 @@ Steps:
 12. **GRUB `timeout_style=hidden` hides the menu.** With `timeout=0` the menu never shows. With a non-zero timeout, `timeout_style=hidden` hides the menu but still waits (press Shift/Esc to reveal). Use `timeout=0` + `timeout_style=hidden` + `default=0` for instant silent boot to the first entry.
 13. **cpio append doesn't override earlier files in initrd.** Appending a new cpio archive with the same filename to an initrd only adds a second copy — the installer reads the first occurrence. Replacing files inside the graphical initrd (e.g., logo_debian.png) would require full unpack/repack, which is fragile. Stick to initrd append for adding new files only.
 14. **Partman confirmation "No" loops.** At the partition confirmation prompt, selecting "No" re-displays the same prompt in a loop. There is no graceful exit — this is standard partman behavior. The prompt is a safety net; the expected answer is "Yes" to proceed.
+15. **`efibootmgr --bootnext` enables remote reinstall.** Sets the next boot device without changing the permanent boot order. The firmware clears BootNext after one use. Requires the USB to be plugged in so the firmware has a boot entry for it. On mother, `000A` (CDROM/ISO mode) is the correct entry. Fresh installs generate new SSH host keys — clear the old key with `ssh-keygen -R` before reconnecting.
+16. **Installed system GRUB defaults to 5s timeout.** The installer's GRUB config (timeout=0, hidden) only applies to the installer boot, not the installed system. Use late_command to set `GRUB_TIMEOUT=0` and append `GRUB_TIMEOUT_STYLE=hidden` in `/etc/default/grub`, then run `update-grub`.
