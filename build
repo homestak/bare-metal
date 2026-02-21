@@ -1,0 +1,151 @@
+#!/bin/bash
+set -euo pipefail
+
+###############################################################################
+# build — Remaster a Debian ISO with a preseed file for unattended installs.
+###############################################################################
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+usage() {
+    cat <<EOF
+Usage: ./build [options]
+
+Remaster a Debian ISO with a preseed file for unattended installs.
+
+Options:
+  -h, --help              Show this help message
+  -n, --dry-run           Show what would happen without building
+  -q, --quiet             Suppress xorriso output
+  -u, --usb DEVICE        Write to USB after build (e.g. /dev/sda)
+  -s, --source-iso PATH   Source ISO
+  -p, --preseed PATH      Preseed file
+  -o, --output-iso PATH   Output ISO
+  --no-write              Build ISO but skip USB write
+
+Environment variables (flags take precedence):
+  SOURCE_ISO, PRESEED, OUTPUT_ISO, USB_DEVICE
+
+Examples:
+  ./build
+  ./build --usb /dev/sda
+  ./build --source-iso iso/debian-13.3.0-amd64-DVD-1.iso
+  ./build --dry-run --usb /dev/sda
+  ./build --quiet
+EOF
+    exit 0
+}
+
+# --- Parse flags (override env vars) ----------------------------------------
+
+DRY_RUN=false
+QUIET=false
+NO_WRITE=false
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -h|--help)       usage ;;
+        -n|--dry-run)    DRY_RUN=true; shift ;;
+        -q|--quiet)      QUIET=true; shift ;;
+        --no-write)      NO_WRITE=true; shift ;;
+        -u|--usb)        USB_DEVICE="$2"; shift 2 ;;
+        -s|--source-iso) SOURCE_ISO="$2"; shift 2 ;;
+        -p|--preseed)    PRESEED="$2"; shift 2 ;;
+        -o|--output-iso) OUTPUT_ISO="$2"; shift 2 ;;
+        *) echo "ERROR: Unknown option: $1"; echo "Run ./build --help for usage."; exit 1 ;;
+    esac
+done
+
+SOURCE_ISO="${SOURCE_ISO:-$SCRIPT_DIR/iso/debian-13.3.0-amd64-netinst.iso}"
+PRESEED="${PRESEED:-$SCRIPT_DIR/preseed.cfg}"
+OUTPUT_ISO="${OUTPUT_ISO:-$SCRIPT_DIR/iso/debian-13-preseed.iso}"
+WORK_DIR="${WORK_DIR:-/tmp/bare-metal.$$}"
+USB_DEVICE="${USB_DEVICE:-}"
+
+if $QUIET; then
+    XORRISO_QUIET="-report_about WARNING"
+else
+    XORRISO_QUIET=""
+fi
+
+# --- Dry run ----------------------------------------------------------------
+
+if $DRY_RUN; then
+    cat <<EOF
+Dry run — no changes will be made.
+
+  Source ISO:  $SOURCE_ISO
+  Preseed:     $PRESEED
+  Output ISO:  $OUTPUT_ISO
+  Work dir:    $WORK_DIR
+  USB device:  ${USB_DEVICE:-none}
+  Quiet:       $QUIET
+  No write:    $NO_WRITE
+EOF
+    exit 0
+fi
+
+trap 'rm -rf "$WORK_DIR"' EXIT
+
+# --- Source lib scripts -----------------------------------------------------
+
+source "$SCRIPT_DIR/lib/remaster.sh"
+source "$SCRIPT_DIR/lib/inject-preseed.sh"
+source "$SCRIPT_DIR/lib/patch-bootloader.sh"
+
+# --- Preflight checks -------------------------------------------------------
+
+for cmd in xorriso cpio gzip; do
+    if ! command -v "$cmd" &>/dev/null; then
+        echo "ERROR: '$cmd' not found."
+        exit 1
+    fi
+done
+
+if [ ! -f "/usr/lib/ISOLINUX/isohdpfx.bin" ]; then
+    echo "ERROR: isohdpfx.bin not found. Install with: sudo apt install isolinux"
+    exit 1
+fi
+
+if [ ! -f "$SOURCE_ISO" ]; then
+    echo "ERROR: Source ISO not found: $SOURCE_ISO"
+    exit 1
+fi
+
+if [ ! -f "$PRESEED" ]; then
+    echo "ERROR: Preseed file not found: $PRESEED"
+    exit 1
+fi
+
+# --- Build ------------------------------------------------------------------
+
+extract_iso
+inject_preseed
+patch_bootloader
+rebuild_iso
+
+# --- Optionally write to USB ------------------------------------------------
+
+if [ -n "$USB_DEVICE" ] && ! $NO_WRITE; then
+    if [ ! -b "$USB_DEVICE" ]; then
+        echo "ERROR: $USB_DEVICE is not a block device"
+        exit 1
+    fi
+
+    echo ""
+    echo "WARNING: This will destroy all data on $USB_DEVICE"
+    lsblk "$USB_DEVICE"
+    echo ""
+    read -rp "Type YES to write to $USB_DEVICE: " confirm
+    if [ "$confirm" = "YES" ]; then
+        echo "=== Writing to $USB_DEVICE ..."
+        sudo dd if="$OUTPUT_ISO" of="$USB_DEVICE" bs=4M conv=fsync status=progress
+        echo "=== Done. USB is ready."
+    else
+        echo "Aborted."
+    fi
+else
+    echo ""
+    echo "To write to USB:"
+    echo "  sudo dd if=$OUTPUT_ISO of=/dev/sdX bs=4M conv=fsync status=progress"
+fi
