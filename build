@@ -21,6 +21,7 @@ Options:
   -s, --source-iso PATH   Source ISO
   -p, --preseed PATH      Preseed file
   -o, --output-iso PATH   Output ISO
+  -y, --yes               Skip USB write confirmation prompt
   --no-write              Build ISO but skip USB write
 
 Environment variables (flags take precedence):
@@ -40,6 +41,7 @@ EOF
 
 DRY_RUN=false
 QUIET=false
+YES=false
 NO_WRITE=false
 
 while [ $# -gt 0 ]; do
@@ -47,6 +49,7 @@ while [ $# -gt 0 ]; do
         -h|--help)       usage ;;
         -n|--dry-run)    DRY_RUN=true; shift ;;
         -q|--quiet)      QUIET=true; shift ;;
+        -y|--yes)        YES=true; shift ;;
         --no-write)      NO_WRITE=true; shift ;;
         -u|--usb)        USB_DEVICE="$2"; shift 2 ;;
         -s|--source-iso) SOURCE_ISO="$2"; shift 2 ;;
@@ -80,6 +83,7 @@ Dry run — no changes will be made.
   Work dir:    $WORK_DIR
   USB device:  ${USB_DEVICE:-none}
   Quiet:       $QUIET
+  Yes:         $YES
   No write:    $NO_WRITE
 EOF
     exit 0
@@ -132,18 +136,21 @@ if [ -n "$USB_DEVICE" ] && ! $NO_WRITE; then
         exit 1
     fi
 
-    echo ""
-    echo "WARNING: This will destroy all data on $USB_DEVICE"
-    lsblk "$USB_DEVICE"
-    echo ""
-    read -rp "Type YES to write to $USB_DEVICE: " confirm
-    if [ "$confirm" = "YES" ]; then
-        echo "=== Writing to $USB_DEVICE ..."
-        sudo dd if="$OUTPUT_ISO" of="$USB_DEVICE" bs=4M conv=fsync status=progress
-        echo "=== Done. USB is ready."
-    else
-        echo "Aborted."
+    if ! $YES; then
+        echo ""
+        echo "WARNING: This will destroy all data on $USB_DEVICE"
+        lsblk "$USB_DEVICE"
+        echo ""
+        read -rp "Type YES to write to $USB_DEVICE: " confirm
+        if [ "$confirm" != "YES" ]; then
+            echo "Aborted."
+            exit 0
+        fi
     fi
+
+    echo "=== Writing to $USB_DEVICE ..."
+    sudo dd if="$OUTPUT_ISO" of="$USB_DEVICE" bs=4M conv=fsync status=progress
+    echo "=== Done. USB is ready."
 else
     echo ""
     echo "To write to USB:"

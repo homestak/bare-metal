@@ -51,6 +51,12 @@ setup() {
     [[ "$output" == *"Quiet:       true"* ]]
 }
 
+@test "--dry-run reflects --yes flag" {
+    run "$BUILD" --dry-run --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Yes:         true"* ]]
+}
+
 @test "--dry-run reflects --no-write flag" {
     run "$BUILD" --dry-run --no-write
     [ "$status" -eq 0 ]
