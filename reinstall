@@ -172,25 +172,24 @@ done
 
 echo "=== Verifying fresh install on $HOST ..."
 
-remote_hostname=$(ssh_to_fresh_host "hostname" 2>/dev/null)
-remote_kernel=$(ssh_to_fresh_host "uname -r" 2>/dev/null)
-remote_uptime=$(ssh_to_fresh_host "cat /proc/uptime" 2>/dev/null | cut -d' ' -f1 | cut -d. -f1)
+verify=$(ssh_to_fresh_host "hostname; uname -r; cat /proc/uptime; cat /var/log/installer/lsb-release; stat -c %Y /var/log/installer/" 2>/dev/null) || true
 
-echo "    Hostname: $remote_hostname"
-echo "    Kernel:   $remote_kernel"
-echo "    Uptime:   ${remote_uptime}s"
+remote_hostname=$(echo "$verify" | sed -n '1p')
+remote_kernel=$(echo "$verify" | sed -n '2p')
+remote_uptime=$(echo "$verify" | sed -n '3p' | cut -d' ' -f1 | cut -d. -f1)
+installer_release=$(echo "$verify" | grep "^DISTRIB_RELEASE=" | cut -d= -f2)
+install_epoch=$(echo "$verify" | tail -1)
+install_time=$(date -d "@$install_epoch" "+%Y-%m-%d %H:%M:%S" 2>/dev/null || echo "unknown")
+
+echo "    Hostname:  $remote_hostname"
+echo "    Kernel:    $remote_kernel"
+echo "    Uptime:    ${remote_uptime}s"
+echo "    Installer: $installer_release"
+echo "    Installed: $install_time"
 
 if [ "$remote_uptime" -gt 300 ] 2>/dev/null; then
     echo "WARNING: Uptime is ${remote_uptime}s (>5 min). This may not be a fresh install."
     echo "         Check that the USB installer was plugged in and EFI boot-next was set correctly."
-fi
-
-build_stamp=$(ssh_to_fresh_host "head -3 /var/log/installer/preseed.cfg" 2>/dev/null || echo "")
-if [ -n "$build_stamp" ]; then
-    build_line=$(echo "$build_stamp" | grep "^# build:" || true)
-    if [ -n "$build_line" ]; then
-        echo "    Build:    $build_line"
-    fi
 fi
 
 # --- Step 7: Accept host key ------------------------------------------------
