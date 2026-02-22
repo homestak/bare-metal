@@ -158,10 +158,12 @@ while true; do
     remaining=$(( (TIMEOUT - elapsed) / 60 ))
     echo "    Attempt $attempt (${elapsed}s elapsed, ~${remaining}m remaining) ..."
 
-    if ssh_to_fresh_host "true" 2>/dev/null; then
-        echo "    SSH is up!"
+    remote_uptime=$(ssh_to_fresh_host "cat /proc/uptime" 2>/dev/null | cut -d' ' -f1 | cut -d. -f1) || continue
+    if [ "$remote_uptime" -lt 300 ] 2>/dev/null; then
+        echo "    SSH is up! (uptime: ${remote_uptime}s)"
         break
     fi
+    echo "    SSH responded but uptime is ${remote_uptime}s — not a fresh install, still waiting ..."
 
     sleep "$POLL_INTERVAL"
 done
