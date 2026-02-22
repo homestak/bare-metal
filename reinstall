@@ -82,7 +82,10 @@ ssh_to_host() {
 }
 
 ssh_to_fresh_host() {
-    ssh -o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$HOST" "$@"
+    ssh -o ConnectTimeout=5 -o BatchMode=yes \
+        -o StrictHostKeyChecking=no \
+        -o UserKnownHostsFile=/dev/null \
+        "$HOST" "$@"
 }
 
 # --- Step 1: Preflight ------------------------------------------------------
@@ -188,7 +191,12 @@ if [ -n "$build_stamp" ]; then
     fi
 fi
 
-# --- Step 7: Summary -------------------------------------------------------
+# --- Step 7: Accept host key ------------------------------------------------
+
+ssh-keygen -R "$HOST" 2>/dev/null || true
+ssh -o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$HOST" "true" 2>/dev/null || true
+
+# --- Step 8: Summary -------------------------------------------------------
 
 elapsed=$(( $(date +%s) - start_time ))
 printf "\n=== Reinstall complete. (%dm %ds)\n" $((elapsed / 60)) $((elapsed % 60))
