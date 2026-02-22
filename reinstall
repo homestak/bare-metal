@@ -1,0 +1,195 @@
+#!/bin/bash
+set -euo pipefail
+
+###############################################################################
+# reinstall — Remote reinstall a host via EFI boot-next to USB installer.
+###############################################################################
+
+usage() {
+    cat <<EOF
+Usage: ./reinstall <hostname> [options]
+
+Remotely trigger a Debian reinstall via efibootmgr --bootnext. Reboots the
+target into the USB installer, waits for the install to complete, and verifies
+the fresh system is up.
+
+Requires: USB with preseed ISO plugged into the target host.
+
+Options:
+  -h, --help              Show this help message
+  -n, --dry-run           Show what would happen without acting
+  -y, --yes               Skip confirmation prompt
+  -b, --boot-entry ENTRY  EFI boot entry for USB installer (default: 000A)
+  -t, --timeout SECONDS   Max seconds to wait for host to return (default: 1200)
+
+Environment variables (flags take precedence):
+  REINSTALL_BOOT_ENTRY, REINSTALL_TIMEOUT
+
+Examples:
+  ./reinstall mother
+  ./reinstall mother --yes
+  ./reinstall mother --boot-entry 000B --timeout 900
+  ./reinstall mother --dry-run
+EOF
+    exit 0
+}
+
+# --- Parse flags ------------------------------------------------------------
+
+DRY_RUN=false
+YES=false
+HOST=""
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -h|--help)       usage ;;
+        -n|--dry-run)    DRY_RUN=true; shift ;;
+        -y|--yes)        YES=true; shift ;;
+        -b|--boot-entry) BOOT_ENTRY="$2"; shift 2 ;;
+        -t|--timeout)    TIMEOUT="$2"; shift 2 ;;
+        -*)              echo "ERROR: Unknown option: $1"; echo "Run ./reinstall --help for usage."; exit 1 ;;
+        *)               HOST="$1"; shift ;;
+    esac
+done
+
+BOOT_ENTRY="${BOOT_ENTRY:-${REINSTALL_BOOT_ENTRY:-000A}}"
+TIMEOUT="${TIMEOUT:-${REINSTALL_TIMEOUT:-1200}}"
+POLL_INTERVAL=15
+
+if [ -z "$HOST" ]; then
+    echo "ERROR: hostname required. Run ./reinstall --help for usage."
+    exit 1
+fi
+
+# --- Dry run ----------------------------------------------------------------
+
+if $DRY_RUN; then
+    cat <<EOF
+Dry run — no changes will be made.
+
+  Host:        $HOST
+  Boot entry:  $BOOT_ENTRY
+  Timeout:     ${TIMEOUT}s ($((TIMEOUT / 60))m)
+  Yes:         $YES
+EOF
+    exit 0
+fi
+
+# --- SSH helpers ------------------------------------------------------------
+
+ssh_to_host() {
+    ssh -o ConnectTimeout=5 -o BatchMode=yes "$HOST" "$@"
+}
+
+ssh_to_fresh_host() {
+    ssh -o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$HOST" "$@"
+}
+
+# --- Step 1: Preflight ------------------------------------------------------
+
+echo "=== Preflight: verifying $HOST is reachable ..."
+
+if ! ssh_to_host "true" 2>/dev/null; then
+    echo "ERROR: Cannot reach $HOST via SSH. Is the host running?"
+    exit 1
+fi
+echo "    SSH connection OK"
+
+if ! ssh_to_host "command -v efibootmgr >/dev/null" 2>/dev/null; then
+    echo "ERROR: efibootmgr not found on $HOST. Install with: sudo apt install efibootmgr"
+    exit 1
+fi
+echo "    efibootmgr found"
+
+efi_output=$(ssh_to_host "sudo efibootmgr" 2>/dev/null)
+boot_label=$(echo "$efi_output" | grep "Boot${BOOT_ENTRY}" | head -1)
+
+if [ -z "$boot_label" ]; then
+    echo "ERROR: EFI boot entry $BOOT_ENTRY not found on $HOST. Available entries:"
+    echo "$efi_output" | grep "^Boot" | sed 's/^/       /'
+    exit 1
+fi
+echo "    $boot_label"
+
+# --- Step 2: Confirmation ---------------------------------------------------
+
+if ! $YES; then
+    echo ""
+    echo "WARNING: This will wipe and reinstall $HOST via EFI boot entry $BOOT_ENTRY."
+    echo ""
+    read -rp "Type YES to proceed: " confirm
+    if [ "$confirm" != "YES" ]; then
+        echo "Aborted."
+        exit 0
+    fi
+fi
+
+# --- Step 3: Set boot-next + reboot ----------------------------------------
+
+start_time=$(date +%s)
+
+echo "=== Setting EFI boot-next to $BOOT_ENTRY and rebooting ..."
+ssh_to_host "sudo efibootmgr --bootnext $BOOT_ENTRY" >/dev/null 2>&1
+echo "    Boot-next set"
+ssh_to_host "sudo systemctl reboot" 2>/dev/null || true
+echo "    Reboot command sent"
+
+# --- Step 4: Remove old host key -------------------------------------------
+
+echo "=== Removing old host key for $HOST ..."
+ssh-keygen -R "$HOST" 2>/dev/null || true
+
+# --- Step 5: Poll for SSH --------------------------------------------------
+
+echo "=== Waiting for $HOST to reinstall (timeout: $((TIMEOUT / 60))m) ..."
+
+attempt=0
+while true; do
+    elapsed=$(( $(date +%s) - start_time ))
+    if [ "$elapsed" -ge "$TIMEOUT" ]; then
+        echo "ERROR: Timed out after ${TIMEOUT}s waiting for $HOST to come back."
+        exit 1
+    fi
+
+    attempt=$((attempt + 1))
+    remaining=$(( (TIMEOUT - elapsed) / 60 ))
+    echo "    Attempt $attempt (${elapsed}s elapsed, ~${remaining}m remaining) ..."
+
+    if ssh_to_fresh_host "true" 2>/dev/null; then
+        echo "    SSH is up!"
+        break
+    fi
+
+    sleep "$POLL_INTERVAL"
+done
+
+# --- Step 6: Verify fresh install ------------------------------------------
+
+echo "=== Verifying fresh install on $HOST ..."
+
+remote_hostname=$(ssh_to_fresh_host "hostname" 2>/dev/null)
+remote_kernel=$(ssh_to_fresh_host "uname -r" 2>/dev/null)
+remote_uptime=$(ssh_to_fresh_host "cat /proc/uptime" 2>/dev/null | cut -d' ' -f1 | cut -d. -f0)
+
+echo "    Hostname: $remote_hostname"
+echo "    Kernel:   $remote_kernel"
+echo "    Uptime:   ${remote_uptime}s"
+
+if [ "$remote_uptime" -gt 300 ] 2>/dev/null; then
+    echo "WARNING: Uptime is ${remote_uptime}s (>5 min). This may not be a fresh install."
+    echo "         Check that the USB installer was plugged in and EFI boot-next was set correctly."
+fi
+
+build_stamp=$(ssh_to_fresh_host "head -3 /var/log/installer/preseed.cfg" 2>/dev/null || echo "")
+if [ -n "$build_stamp" ]; then
+    build_line=$(echo "$build_stamp" | grep "^# build:" || true)
+    if [ -n "$build_line" ]; then
+        echo "    Build:    $build_line"
+    fi
+fi
+
+# --- Step 7: Summary -------------------------------------------------------
+
+elapsed=$(( $(date +%s) - start_time ))
+printf "\n=== Reinstall complete. (%dm %ds)\n" $((elapsed / 60)) $((elapsed % 60))
+echo "    ssh $HOST"

@@ -13,6 +13,7 @@ Build a remastered Debian 13 (Trixie) ISO with a baked-in preseed file for fully
 ```
 ~/homestak/bare-metal/
   build                               # entry point — sources lib/, runs build
+  reinstall                           # remote reinstall via efibootmgr --bootnext
   preseed.cfg                         # preseed file for mother
   lib/
     remaster.sh                       # extract + rebuild ISO with xorriso
@@ -188,24 +189,26 @@ Steps:
 5. `rebuild_iso` — xorriso mkisofs hybrid MBR+EFI (lib/remaster.sh)
 6. Optionally dd to USB_DEVICE with `conv=fsync`
 
-## Remote Reinstall Workflow
-No physical access needed — just a USB with the preseed ISO plugged into the target.
+## Remote Reinstall
+
+The `reinstall` script handles the full remote reinstall lifecycle — no physical access needed, just a USB with the preseed ISO plugged into the target.
 
 ```bash
-# 1. Build the ISO on father
-./build --quiet
-
-# 2. Write to USB on father (USB A at /dev/sda)
-sudo dd if=iso/debian-13-preseed.iso of=/dev/sda bs=4M conv=fsync status=progress
-
-# 3. Move USB to mother, then from father:
-ssh mother "sudo efibootmgr --bootnext 000A"   # set USB as next boot (one-shot)
-ssh mother "sudo systemctl reboot"              # reboot into installer
-
-# 4. Wait ~10-15 min, then verify:
-ssh-keygen -R mother                            # clear old host key (new install = new keys)
-ssh -o StrictHostKeyChecking=accept-new mother   # accept new key and connect
+# Build + write USB on father, move USB to mother, then:
+./reinstall mother          # interactive (prompts for YES)
+./reinstall mother --yes    # fully unattended
 ```
+
+Entry point: `./reinstall <hostname>`. Performs: SSH preflight, `efibootmgr --bootnext`, reboot, poll for SSH, verify fresh install.
+
+Flags:
+- `-h, --help` — show usage
+- `-n, --dry-run` — show config without acting
+- `-y, --yes` — skip confirmation prompt
+- `-b, --boot-entry ENTRY` — EFI boot entry (default: `000A`)
+- `-t, --timeout SECONDS` — poll timeout (default: `1200` = 20 min)
+
+Env vars: `REINSTALL_BOOT_ENTRY`, `REINSTALL_TIMEOUT` (flags take precedence).
 
 EFI boot entries on mother (for reference):
 - `0001` — debian (default, installed system)
