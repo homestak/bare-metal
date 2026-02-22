@@ -172,7 +172,7 @@ echo "=== Verifying fresh install on $HOST ..."
 
 remote_hostname=$(ssh_to_fresh_host "hostname" 2>/dev/null)
 remote_kernel=$(ssh_to_fresh_host "uname -r" 2>/dev/null)
-remote_uptime=$(ssh_to_fresh_host "cat /proc/uptime" 2>/dev/null | cut -d' ' -f1 | cut -d. -f0)
+remote_uptime=$(ssh_to_fresh_host "cat /proc/uptime" 2>/dev/null | cut -d' ' -f1 | cut -d. -f1)
 
 echo "    Hostname: $remote_hostname"
 echo "    Kernel:   $remote_kernel"
