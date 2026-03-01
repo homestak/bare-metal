@@ -203,21 +203,18 @@ The `reinstall` script handles the full remote reinstall lifecycle — no physic
 ./reinstall mother --yes    # fully unattended
 ```
 
-Entry point: `./reinstall <hostname>`. Performs: SSH preflight, `efibootmgr --bootnext`, reboot, poll for SSH, verify fresh install.
+Entry point: `./reinstall <hostname>`. Performs: SSH preflight, auto-detect USB boot entry, `efibootmgr --bootnext`, reboot, poll for SSH, verify fresh install.
 
 Flags:
 - `-h, --help` — show usage
-- `-n, --dry-run` — show config without acting
+- `-n, --dry-run` — show config without acting (queries host for boot entry auto-detection)
 - `-y, --yes` — skip confirmation prompt
-- `-b, --boot-entry ENTRY` — EFI boot entry (default: `000A`)
+- `-b, --boot-entry ENTRY` — EFI boot entry (auto-detected from `efibootmgr` if omitted)
 - `-t, --timeout SECONDS` — poll timeout (default: `1200` = 20 min)
 
 Env vars: `REINSTALL_BOOT_ENTRY`, `REINSTALL_TIMEOUT` (flags take precedence).
 
-EFI boot entries on mother (for reference):
-- `0001` — debian (default, installed system)
-- `000A` — USB DISK 3.0 PART 1 (CDROM/ISO mode — this is the one to use)
-- `000B` — USB DISK 3.0 PART 0 (MBR partition)
+EFI boot entry auto-detection: the script queries `efibootmgr` on the target host and looks for a `USB.*PART 1` entry (CDROM/ISO mode). Entry numbers are non-deterministic — they change per device and across reboots — so auto-detection is preferred over hardcoding. The firmware creates entries when a USB drive is plugged in during boot; manually created entries degrade to generic `VenHw` paths when the drive is removed.
 
 `--bootnext` is one-shot: the firmware clears it after use, so if the install fails, next reboot goes back to the existing system.
 
