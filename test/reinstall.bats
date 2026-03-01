@@ -43,7 +43,7 @@ setup() {
     [ "$status" -eq 0 ]
     [[ "$output" == *"Dry run"* ]]
     [[ "$output" == *"Host:"* ]]
-    [[ "$output" == *"Boot entry:"* ]]
+    [[ "$output" == *"Boot entry:  (auto-detect)"* ]]
     [[ "$output" == *"Timeout:"* ]]
 }
 

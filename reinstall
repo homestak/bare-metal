@@ -19,7 +19,7 @@ Options:
   -h, --help              Show this help message
   -n, --dry-run           Show what would happen without acting
   -y, --yes               Skip confirmation prompt
-  -b, --boot-entry ENTRY  EFI boot entry for USB installer (default: 000A)
+  -b, --boot-entry ENTRY  EFI boot entry for USB installer (auto-detected if omitted)
   -t, --timeout SECONDS   Max seconds to wait for host to return (default: 1200)
 
 Environment variables (flags take precedence):
@@ -28,7 +28,7 @@ Environment variables (flags take precedence):
 Examples:
   ./reinstall mother
   ./reinstall mother --yes
-  ./reinstall mother --boot-entry 000B --timeout 900
+  ./reinstall mother --boot-entry 0005 --timeout 900
   ./reinstall mother --dry-run
 EOF
     exit 0
@@ -52,7 +52,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-BOOT_ENTRY="${BOOT_ENTRY:-${REINSTALL_BOOT_ENTRY:-000A}}"
+BOOT_ENTRY="${BOOT_ENTRY:-${REINSTALL_BOOT_ENTRY:-}}"
 TIMEOUT="${TIMEOUT:-${REINSTALL_TIMEOUT:-1200}}"
 POLL_INTERVAL=15
 
@@ -68,7 +68,7 @@ if $DRY_RUN; then
 Dry run — no changes will be made.
 
   Host:        $HOST
-  Boot entry:  $BOOT_ENTRY
+  Boot entry:  ${BOOT_ENTRY:-(auto-detect)}
   Timeout:     ${TIMEOUT}s ($((TIMEOUT / 60))m)
   Yes:         $YES
 EOF
@@ -105,6 +105,19 @@ fi
 echo "    efibootmgr found"
 
 efi_output=$(ssh_to_host "sudo efibootmgr" 2>/dev/null)
+
+# Auto-detect USB CDROM boot entry if not specified
+if [ -z "$BOOT_ENTRY" ]; then
+    BOOT_ENTRY=$(echo "$efi_output" | grep "USB.*PART 1" | grep -o "Boot[0-9A-Fa-f]*" | head -1 | sed 's/^Boot\*//' | sed 's/^Boot//')
+    if [ -z "$BOOT_ENTRY" ]; then
+        echo "ERROR: No USB installer (PART 1) detected on $HOST. Is a USB plugged in?"
+        echo "       Available entries:"
+        echo "$efi_output" | grep "^Boot" | sed 's/^/       /'
+        exit 1
+    fi
+    echo "    Auto-detected boot entry: $BOOT_ENTRY"
+fi
+
 boot_label=$(echo "$efi_output" | grep "Boot${BOOT_ENTRY}" | head -1)
 
 if [ -z "$boot_label" ]; then
