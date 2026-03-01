@@ -14,27 +14,36 @@ Build a remastered Debian 13 (Trixie) ISO with a baked-in preseed file for fully
 ~/homestak/bare-metal/
   build                               # entry point — sources lib/, runs build
   reinstall                           # remote reinstall via efibootmgr --bootnext
-  preseed.cfg                         # preseed file for mother
+  preseed.cfg                         # preseed file for mother (CHANGEME placeholders in git)
+  .secrets                            # password hashes + user identity (.gitignore'd)
   keys/                               # SSH public keys (.pub files, .gitignore'd)
     .gitkeep                          # keeps directory in git
   lib/
     remaster.sh                       # extract + rebuild ISO with xorriso
-    inject-preseed.sh                 # cpio/gzip append preseed + authorized_keys into both initrds
+    inject-preseed.sh                 # secrets substitution + authorized_keys + cpio/gzip into both initrds
     patch-bootloader.sh               # sed on grub.cfg, txt.cfg, gtk.cfg
     splash.png                        # custom Homestak boot splash (640x480)
   iso/                                # .gitignore'd
     debian-13.3.0-amd64-netinst.iso   # source netinst ISO (default)
     debian-13.3.0-amd64-DVD-1.iso     # source DVD ISO (alternate)
     debian-13-preseed.iso             # output remastered ISO
+  test/
+    build.bats                        # 20 bats tests (flags, dry-run, env vars, preflight, partman)
+    reinstall.bats                    # 13 bats tests (flags, dry-run, env vars)
   tools/
     preseed-extraction.sh             # utility for reverse-engineering a running install
 ```
 
 ### USB Devices on father
-- **A** — 57.8G USB DISK 3.0 (reliable, ~21 MB/s write)
-- **B** — 58.2G USB Flash Drive (reliable, ~20 MB/s write)
-- **C** — 3.9G Flash Disk (too small for DVD ISO, works for netinst, very slow ~4 MB/s)
-- All appear as `/dev/sda` when plugged in
+Color-coded Verbatim STORE N GO drives (28.9G each):
+- **Red** (serial 23061806330192, ~30 MB/s) — auto/netinst (fully unattended)
+- **Green** (serial 23061677640013, ~15 MB/s) — confirm/netinst (prompts before partitioning)
+- **Blue** (serial 23061806320148) — confirm/DVD
+
+Retired drives:
+- **A** — 57.8G USB DISK 3.0 (~21 MB/s)
+- **B** — 58.2G USB Flash Drive (~20 MB/s)
+- **C** — 3.9G Flash Disk (~4 MB/s, too small for DVD ISO)
 
 ## What Works (All Confirmed on mother)
 - ISO extraction and rebuild with xorriso (hybrid MBR + EFI)
@@ -45,11 +54,12 @@ Build a remastered Debian 13 (Trixie) ISO with a baked-in preseed file for fully
 - isolinux: timeout=1 (0.1s, minimum non-zero value)
 - Both text and graphical installer paths work fully unattended
 - Dynamic disk selection via `partman/early_command` (smallest non-USB disk)
-- Fully unattended partitioning (`partman/confirm` + `partman/confirm_nooverwrite` enabled)
+- Partman modes via `--partman` flag: `confirm` (default, prompts before partitioning) or `auto` (fully unattended)
 - Locale, keyboard, network, hostname, timezone, partitioning, user account, GRUB — all preseed correctly
 - Standard task enabled (`tasksel tasksel/first multiselect standard`) — full baseline CLI system (man-db, less, bash-completion, file, lsof, pciutils, ca-certificates, etc.)
 - Extra packages via pkgsel/include: openssh-server, sudo, curl, wget, git, vim, htop (no desktop/GNOME)
 - SSH public keys loaded from `keys/*.pub` directory — drop `.pub` files to add keys, all keys go to both jderose and root
+- Secrets substituted at build time: preseed.cfg has CHANGEME placeholders, `inject-preseed.sh` sources `.secrets` and sed-replaces them
 - late_command: root SSH enabled, jderose sudoers, authorized_keys (from keys/*.pub via initrd)
 - NTP clock sync during install (fixes bad BIOS clock, ensures correct time from first boot)
 - IPv6 disabled on installed system (GRUB_CMDLINE_LINUX="ipv6.disable=1" + update-grub)
@@ -136,7 +146,8 @@ d-i partman-auto/method string regular
 d-i partman-auto/choose_recipe select atomic
 d-i partman-partitioning/confirm_write_new_label boolean true
 d-i partman/choose_partition select finish
-# Auto-confirm partitioning (fully unattended):
+# These two lines are present in preseed.cfg but removed by --partman confirm (default).
+# Kept intact by --partman auto for fully unattended installs.
 d-i partman/confirm boolean true
 d-i partman/confirm_nooverwrite boolean true
 d-i partman-efi/non_efi_system boolean true
@@ -178,7 +189,19 @@ d-i finish-install/reboot_in_progress note
 ## Build Script
 Entry point: `./build`. Sources `lib/remaster.sh`, `lib/inject-preseed.sh`, `lib/patch-bootloader.sh`.
 
-Env vars with defaults:
+Flags:
+- `-h, --help` — show usage
+- `-n, --dry-run` — show config without building
+- `-q, --quiet` — suppress xorriso output
+- `-y, --yes` — skip USB write confirmation
+- `-u, --usb DEVICE` — write to USB after build
+- `-s, --source-iso PATH` — source ISO
+- `-p, --preseed PATH` — preseed file
+- `-o, --output-iso PATH` — output ISO
+- `--no-write` — build ISO but skip USB write
+- `--partman MODE` — `confirm` (default, prompts before partitioning) or `auto` (fully unattended)
+
+Env vars with defaults (flags take precedence):
 - `SOURCE_ISO` — default `$SCRIPT_DIR/iso/debian-13.3.0-amd64-netinst.iso`
 - `PRESEED` — default `$SCRIPT_DIR/preseed.cfg`
 - `OUTPUT_ISO` — default `$SCRIPT_DIR/iso/debian-13-preseed.iso`
@@ -186,12 +209,30 @@ Env vars with defaults:
 - `USB_DEVICE` — optional, triggers dd to USB with confirmation
 
 Steps:
-1. Preflight checks (xorriso, cpio, gzip, isolinux isohdpfx.bin, source ISO, preseed file exist)
+1. Preflight checks (xorriso, cpio, gzip, isolinux isohdpfx.bin, source ISO, preseed file, .secrets warning)
 2. `extract_iso` — xorriso extract + replace splash (lib/remaster.sh)
-3. `inject_preseed` — cpio+gzip append preseed.cfg + authorized_keys into both initrds (lib/inject-preseed.sh)
+3. `inject_preseed` — substitute secrets from `.secrets`, apply partman mode, build authorized_keys from `keys/*.pub`, cpio+gzip append into both initrds (lib/inject-preseed.sh)
 4. `patch_bootloader` — sed on grub.cfg, txt.cfg, gtk.cfg, isolinux.cfg (lib/patch-bootloader.sh)
 5. `rebuild_iso` — xorriso mkisofs hybrid MBR+EFI (lib/remaster.sh)
 6. Optionally dd to USB_DEVICE with `conv=fsync`
+
+### Secrets and Keys
+
+preseed.cfg is committed with CHANGEME placeholders:
+- `CHANGEME_ROOT_HASH`, `CHANGEME_USER_HASH` — password hashes
+- `CHANGEME_FULLNAME`, `CHANGEME_USERNAME` — user identity
+
+At build time, `inject-preseed.sh` sources `.secrets` and sed-replaces the placeholders in the working copy. The `.secrets` file is `.gitignore`'d.
+
+SSH public keys live in `keys/*.pub` (also `.gitignore`'d). At build time, all `.pub` files are concatenated into `authorized_keys` and injected into the initrd alongside `preseed.cfg`. The late_command copies `/authorized_keys` to both `~jderose/.ssh/` and `~root/.ssh/`.
+
+### Partman Modes
+
+`--partman confirm` (default): removes `partman/confirm` and `partman/confirm_nooverwrite` lines from the preseed so the installer pauses for user confirmation before partitioning. Safe for interactive installs.
+
+`--partman auto`: keeps those lines intact so partitioning proceeds without prompting. Use for fully unattended installs.
+
+Note: setting `partman/confirm boolean false` does NOT work — it answers "No" to the confirmation prompt, which loops (see lesson #14). The only way to require confirmation is to remove the lines entirely.
 
 ## Remote Reinstall
 
@@ -247,5 +288,9 @@ EFI boot entry auto-detection: the script queries `efibootmgr` on the target hos
 12. **GRUB `timeout_style=hidden` hides the menu.** With `timeout=0` the menu never shows. With a non-zero timeout, `timeout_style=hidden` hides the menu but still waits (press Shift/Esc to reveal). Use `timeout=0` + `timeout_style=hidden` + `default=0` for instant silent boot to the first entry.
 13. **cpio append doesn't override earlier files in initrd.** Appending a new cpio archive with the same filename to an initrd only adds a second copy — the installer reads the first occurrence. Replacing files inside the graphical initrd (e.g., logo_debian.png) would require full unpack/repack, which is fragile. Stick to initrd append for adding new files only.
 14. **Partman confirmation "No" loops.** At the partition confirmation prompt, selecting "No" re-displays the same prompt in a loop. There is no graceful exit — this is standard partman behavior. The prompt is a safety net; the expected answer is "Yes" to proceed.
-15. **`efibootmgr --bootnext` enables remote reinstall.** Sets the next boot device without changing the permanent boot order. The firmware clears BootNext after one use. Requires the USB to be plugged in so the firmware has a boot entry for it. On mother, `000A` (CDROM/ISO mode) is the correct entry. Fresh installs generate new SSH host keys — clear the old key with `ssh-keygen -R` before reconnecting.
+15. **`efibootmgr --bootnext` enables remote reinstall.** Sets the next boot device without changing the permanent boot order. The firmware clears BootNext after one use. Requires the USB to be plugged in so the firmware has a boot entry for it. The `reinstall` script auto-detects the correct entry by querying `efibootmgr` for `USB.*PART 1`. Fresh installs generate new SSH host keys — clear the old key with `ssh-keygen -R` before reconnecting.
 16. **Installed system GRUB defaults to 5s timeout.** The installer's GRUB config (timeout=0, hidden) only applies to the installer boot, not the installed system. Use late_command to set `GRUB_TIMEOUT=0` and append `GRUB_TIMEOUT_STYLE=hidden` in `/etc/default/grub`, then run `update-grub`.
+17. **EFI boot entry numbers are non-deterministic.** Entry numbers change per-device and across reboots. Never hardcode them — auto-detect at runtime by querying `efibootmgr` for the expected label pattern (e.g., `USB.*PART 1`). Manually created entries (via `efibootmgr --create`) degrade to generic `VenHw` paths when the drive is removed; firmware-detected entries (created during POST) are more reliable.
+18. **Stale EFI entries persist until reboot.** After removing a USB drive, its EFI boot entry remains in NVRAM until the next reboot. Cross-check with `lsblk` for actual removable disk presence before trusting an EFI entry.
+19. **Poll loops must sleep on SSH failure.** When polling for a host to come back after reinstall, an SSH connection failure should still sleep before retrying. Without the sleep, the loop spins thousands of times per minute. Use `|| { sleep "$POLL_INTERVAL"; continue; }` pattern.
+20. **Uptime gate for fresh install detection.** After reinstall, wait for SSH to return AND verify uptime < 5 minutes. This prevents false positives from the old system coming back briefly before the installer takes over.
