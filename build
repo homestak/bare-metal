@@ -81,6 +81,7 @@ Dry run — no changes will be made.
   Preseed:     $PRESEED
   Output ISO:  $OUTPUT_ISO
   Work dir:    $WORK_DIR
+  Keys:        $SCRIPT_DIR/keys/ ($(compgen -G "$SCRIPT_DIR/keys/*.pub" 2>/dev/null | wc -l) .pub files)
   USB device:  ${USB_DEVICE:-none}
   Quiet:       $QUIET
   Yes:         $YES
@@ -119,6 +120,10 @@ fi
 if [ ! -f "$PRESEED" ]; then
     echo "ERROR: Preseed file not found: $PRESEED"
     exit 1
+fi
+
+if [ ! -f "$SCRIPT_DIR/.secrets" ]; then
+    echo "WARNING: .secrets not found — CHANGEME placeholders will remain in preseed"
 fi
 
 # --- Build ------------------------------------------------------------------

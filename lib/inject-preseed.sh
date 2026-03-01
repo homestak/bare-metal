@@ -1,5 +1,5 @@
 #!/bin/bash
-# lib/inject-preseed.sh — inject preseed.cfg into both initrds
+# lib/inject-preseed.sh — inject preseed.cfg + authorized_keys into both initrds
 
 inject_preseed() {
     echo "=== Injecting preseed into initrd ..."
@@ -12,13 +12,40 @@ inject_preseed() {
     commit="$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
     sed -i "1i# build: ${build_time}\n# commit: ${commit}" "$WORK_DIR/initrd-inject/preseed.cfg"
 
+    # Substitute secrets from .secrets into the preseed copy
+    local secrets="$SCRIPT_DIR/.secrets"
+    if [ -f "$secrets" ]; then
+        source "$secrets"
+        sed -i \
+            -e "s|CHANGEME_ROOT_HASH|${ROOT_PASSWORD_HASH}|g" \
+            -e "s|CHANGEME_USER_HASH|${USER_PASSWORD_HASH}|g" \
+            -e "s|CHANGEME_FULLNAME|${USER_FULLNAME}|g" \
+            -e "s|CHANGEME_USERNAME|${USERNAME}|g" \
+            "$WORK_DIR/initrd-inject/preseed.cfg"
+        echo "    Substituted secrets from .secrets"
+    else
+        echo "    WARNING: .secrets not found — CHANGEME placeholders will remain in preseed"
+    fi
+
+    # Build authorized_keys from keys/*.pub
+    local key_count=0 files_to_inject="preseed.cfg"
+    if compgen -G "$SCRIPT_DIR/keys/*.pub" >/dev/null; then
+        cat "$SCRIPT_DIR"/keys/*.pub > "$WORK_DIR/initrd-inject/authorized_keys"
+        key_count=$(ls -1 "$SCRIPT_DIR"/keys/*.pub | wc -l)
+        files_to_inject="preseed.cfg
+authorized_keys"
+        echo "    Found $key_count SSH public key(s) in keys/"
+    else
+        echo "    WARNING: No .pub files found in keys/ — no authorized_keys will be installed"
+    fi
+
     cd "$WORK_DIR/initrd-inject"
-    echo preseed.cfg | cpio -o -H newc 2>/dev/null | gzip > "$WORK_DIR/preseed.cpio.gz"
+    printf '%s\n' $files_to_inject | cpio -o -H newc 2>/dev/null | gzip > "$WORK_DIR/preseed.cpio.gz"
 
     for initrd in install.amd/initrd.gz install.amd/gtk/initrd.gz; do
         if [ -f "$WORK_DIR/isofiles/$initrd" ]; then
             cat "$WORK_DIR/preseed.cpio.gz" >> "$WORK_DIR/isofiles/$initrd"
-            echo "    Injected preseed.cfg into $initrd"
+            echo "    Injected into $initrd"
         fi
     done
     cd "$SCRIPT_DIR"

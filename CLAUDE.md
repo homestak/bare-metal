@@ -15,9 +15,11 @@ Build a remastered Debian 13 (Trixie) ISO with a baked-in preseed file for fully
   build                               # entry point — sources lib/, runs build
   reinstall                           # remote reinstall via efibootmgr --bootnext
   preseed.cfg                         # preseed file for mother
+  keys/                               # SSH public keys (.pub files, .gitignore'd)
+    .gitkeep                          # keeps directory in git
   lib/
     remaster.sh                       # extract + rebuild ISO with xorriso
-    inject-preseed.sh                 # cpio/gzip append to both initrds
+    inject-preseed.sh                 # cpio/gzip append preseed + authorized_keys into both initrds
     patch-bootloader.sh               # sed on grub.cfg, txt.cfg, gtk.cfg
     splash.png                        # custom Homestak boot splash (640x480)
   iso/                                # .gitignore'd
@@ -47,7 +49,8 @@ Build a remastered Debian 13 (Trixie) ISO with a baked-in preseed file for fully
 - Locale, keyboard, network, hostname, timezone, partitioning, user account, GRUB — all preseed correctly
 - Standard task enabled (`tasksel tasksel/first multiselect standard`) — full baseline CLI system (man-db, less, bash-completion, file, lsof, pciutils, ca-certificates, etc.)
 - Extra packages via pkgsel/include: openssh-server, sudo, curl, wget, git, vim, htop (no desktop/GNOME)
-- late_command: root SSH enabled, jderose sudoers, authorized_keys for both jderose and root
+- SSH public keys loaded from `keys/*.pub` directory — drop `.pub` files to add keys, all keys go to both jderose and root
+- late_command: root SSH enabled, jderose sudoers, authorized_keys (from keys/*.pub via initrd)
 - NTP clock sync during install (fixes bad BIOS clock, ensures correct time from first boot)
 - IPv6 disabled on installed system (GRUB_CMDLINE_LINUX="ipv6.disable=1" + update-grub)
 - Instant GRUB boot on installed system (GRUB_TIMEOUT=0 + GRUB_TIMEOUT_STYLE=hidden via late_command)
@@ -143,11 +146,12 @@ d-i base-installer/kernel/image string linux-image-amd64
 d-i base-installer/initramfs-tools/driver-policy string most
 
 ### Account setup
-d-i passwd/root-password-crypted password [hash in file]
+# Values substituted from .secrets at build time by inject-preseed.sh
+d-i passwd/root-password-crypted password CHANGEME_ROOT_HASH
 d-i passwd/root-login boolean true
-d-i passwd/user-fullname string John DeRose
-d-i passwd/username string jderose
-d-i passwd/user-password-crypted password [hash in file]
+d-i passwd/user-fullname string CHANGEME_FULLNAME
+d-i passwd/username string CHANGEME_USERNAME
+d-i passwd/user-password-crypted password CHANGEME_USER_HASH
 
 ### Package selection
 tasksel tasksel/first multiselect standard
@@ -162,7 +166,7 @@ d-i grub-installer/force-efi-extra-removable boolean true
 ### late_command handles:
 # - PermitRootLogin yes in sshd_config
 # - jderose NOPASSWD sudo
-# - authorized_keys for jderose and root
+# - authorized_keys for jderose and root (copied from /authorized_keys in initrd, built from keys/*.pub)
 # - IPv6 disable (GRUB_CMDLINE_LINUX + update-grub)
 # - Instant GRUB boot (GRUB_TIMEOUT=0 + GRUB_TIMEOUT_STYLE=hidden)
 
@@ -184,7 +188,7 @@ Env vars with defaults:
 Steps:
 1. Preflight checks (xorriso, cpio, gzip, isolinux isohdpfx.bin, source ISO, preseed file exist)
 2. `extract_iso` — xorriso extract + replace splash (lib/remaster.sh)
-3. `inject_preseed` — cpio+gzip append into both initrds (lib/inject-preseed.sh)
+3. `inject_preseed` — cpio+gzip append preseed.cfg + authorized_keys into both initrds (lib/inject-preseed.sh)
 4. `patch_bootloader` — sed on grub.cfg, txt.cfg, gtk.cfg, isolinux.cfg (lib/patch-bootloader.sh)
 5. `rebuild_iso` — xorriso mkisofs hybrid MBR+EFI (lib/remaster.sh)
 6. Optionally dd to USB_DEVICE with `conv=fsync`
