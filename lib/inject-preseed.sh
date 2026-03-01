@@ -27,6 +27,18 @@ inject_preseed() {
         echo "    WARNING: .secrets not found — CHANGEME placeholders will remain in preseed"
     fi
 
+    # Apply partman mode — "confirm" (default) removes the auto-confirm lines
+    # so the installer pauses for user input; "auto" keeps them for unattended use
+    if [ "${PARTMAN_MODE:-confirm}" = "confirm" ]; then
+        sed -i \
+            -e '/^d-i partman\/confirm boolean true$/d' \
+            -e '/^d-i partman\/confirm_nooverwrite boolean true$/d' \
+            "$WORK_DIR/initrd-inject/preseed.cfg"
+        echo "    Partman mode: confirm (will prompt before partitioning)"
+    else
+        echo "    Partman mode: auto (no confirmation prompt)"
+    fi
+
     # Build authorized_keys from keys/*.pub
     local key_count=0 files_to_inject="preseed.cfg"
     if compgen -G "$SCRIPT_DIR/keys/*.pub" >/dev/null; then

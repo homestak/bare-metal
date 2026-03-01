@@ -22,6 +22,7 @@ Options:
   -p, --preseed PATH      Preseed file
   -o, --output-iso PATH   Output ISO
   -y, --yes               Skip USB write confirmation prompt
+  --partman MODE          Partman mode: confirm (default) or auto (skip confirmation)
   --no-write              Build ISO but skip USB write
 
 Environment variables (flags take precedence):
@@ -43,6 +44,7 @@ DRY_RUN=false
 QUIET=false
 YES=false
 NO_WRITE=false
+PARTMAN_MODE=confirm
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -51,6 +53,11 @@ while [ $# -gt 0 ]; do
         -q|--quiet)      QUIET=true; shift ;;
         -y|--yes)        YES=true; shift ;;
         --no-write)      NO_WRITE=true; shift ;;
+        --partman)
+            case "$2" in
+                confirm|auto) PARTMAN_MODE="$2"; shift 2 ;;
+                *) echo "ERROR: --partman must be 'confirm' or 'auto'"; exit 1 ;;
+            esac ;;
         -u|--usb)        USB_DEVICE="$2"; shift 2 ;;
         -s|--source-iso) SOURCE_ISO="$2"; shift 2 ;;
         -p|--preseed)    PRESEED="$2"; shift 2 ;;
@@ -82,6 +89,7 @@ Dry run — no changes will be made.
   Output ISO:  $OUTPUT_ISO
   Work dir:    $WORK_DIR
   Keys:        $SCRIPT_DIR/keys/ ($(compgen -G "$SCRIPT_DIR/keys/*.pub" 2>/dev/null | wc -l) .pub files)
+  Partman:     $PARTMAN_MODE
   USB device:  ${USB_DEVICE:-none}
   Quiet:       $QUIET
   Yes:         $YES
