@@ -127,6 +127,14 @@ if [ -z "$boot_label" ]; then
 fi
 echo "    $boot_label"
 
+# Verify a USB drive is actually present
+if ! ssh_to_host "lsblk -dno RM,TYPE | grep -q '1.*disk'" 2>/dev/null; then
+    echo "ERROR: No removable USB device detected on $HOST."
+    echo "       EFI entry $BOOT_ENTRY exists but may be stale (firmware keeps entries until reboot)."
+    exit 1
+fi
+echo "    USB device present"
+
 # --- Dry run ----------------------------------------------------------------
 
 if $DRY_RUN; then

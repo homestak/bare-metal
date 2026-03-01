@@ -54,13 +54,13 @@ setup() {
 }
 
 @test "--dry-run reflects --timeout flag" {
-    run "$REINSTALL" mother --dry-run --timeout 600
+    run "$REINSTALL" myhost --dry-run -b 0005 --timeout 600
     [ "$status" -eq 0 ]
     [[ "$output" == *"Timeout:     600s"* ]]
 }
 
 @test "--dry-run reflects --yes flag" {
-    run "$REINSTALL" mother --dry-run --yes
+    run "$REINSTALL" myhost --dry-run -b 0005 --yes
     [ "$status" -eq 0 ]
     [[ "$output" == *"Yes:         true"* ]]
 }
