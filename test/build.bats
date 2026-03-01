@@ -63,6 +63,30 @@ setup() {
     [[ "$output" == *"No write:    true"* ]]
 }
 
+@test "--dry-run defaults to --partman confirm" {
+    run "$BUILD" --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Partman:     confirm"* ]]
+}
+
+@test "--dry-run reflects --partman auto" {
+    run "$BUILD" --dry-run --partman auto
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Partman:     auto"* ]]
+}
+
+@test "--dry-run reflects --partman confirm" {
+    run "$BUILD" --dry-run --partman confirm
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Partman:     confirm"* ]]
+}
+
+@test "invalid --partman value fails" {
+    run "$BUILD" --partman bogus
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"--partman must be 'confirm' or 'auto'"* ]]
+}
+
 @test "--dry-run reflects --source-iso flag" {
     run "$BUILD" --dry-run --source-iso /tmp/custom.iso
     [ "$status" -eq 0 ]
