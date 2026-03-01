@@ -61,14 +61,14 @@ if [ -z "$HOST" ]; then
     exit 1
 fi
 
-# --- Dry run ----------------------------------------------------------------
+# --- Dry run (boot entry known) --------------------------------------------
 
-if $DRY_RUN; then
+if $DRY_RUN && [ -n "$BOOT_ENTRY" ]; then
     cat <<EOF
 Dry run — no changes will be made.
 
   Host:        $HOST
-  Boot entry:  ${BOOT_ENTRY:-(auto-detect)}
+  Boot entry:  $BOOT_ENTRY
   Timeout:     ${TIMEOUT}s ($((TIMEOUT / 60))m)
   Yes:         $YES
 EOF
@@ -126,6 +126,21 @@ if [ -z "$boot_label" ]; then
     exit 1
 fi
 echo "    $boot_label"
+
+# --- Dry run ----------------------------------------------------------------
+
+if $DRY_RUN; then
+    cat <<EOF
+
+Dry run — no changes will be made.
+
+  Host:        $HOST
+  Boot entry:  $BOOT_ENTRY ($boot_label)
+  Timeout:     ${TIMEOUT}s ($((TIMEOUT / 60))m)
+  Yes:         $YES
+EOF
+    exit 0
+fi
 
 # --- Step 2: Confirmation ---------------------------------------------------
 

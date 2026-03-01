@@ -39,11 +39,11 @@ setup() {
 # --- Dry run ----------------------------------------------------------------
 
 @test "--dry-run shows config" {
-    run "$REINSTALL" mother --dry-run
+    run "$REINSTALL" myhost --dry-run --boot-entry 0005
     [ "$status" -eq 0 ]
     [[ "$output" == *"Dry run"* ]]
-    [[ "$output" == *"Host:"* ]]
-    [[ "$output" == *"Boot entry:  (auto-detect)"* ]]
+    [[ "$output" == *"Host:        myhost"* ]]
+    [[ "$output" == *"Boot entry:  0005"* ]]
     [[ "$output" == *"Timeout:"* ]]
 }
 
@@ -86,13 +86,13 @@ setup() {
 }
 
 @test "hostname captured as positional arg" {
-    run "$REINSTALL" myhost --dry-run
+    run "$REINSTALL" myhost --dry-run -b 0005
     [ "$status" -eq 0 ]
     [[ "$output" == *"Host:        myhost"* ]]
 }
 
 @test "hostname works between flags" {
-    run "$REINSTALL" -n myhost -y
+    run "$REINSTALL" -n myhost -y -b 0005
     [ "$status" -eq 0 ]
     [[ "$output" == *"Host:        myhost"* ]]
     [[ "$output" == *"Yes:         true"* ]]
