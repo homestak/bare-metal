@@ -108,7 +108,7 @@ efi_output=$(ssh_to_host "sudo efibootmgr" 2>/dev/null)
 
 # Auto-detect USB CDROM boot entry if not specified
 if [ -z "$BOOT_ENTRY" ]; then
-    BOOT_ENTRY=$(echo "$efi_output" | grep "USB.*PART 1" | grep -o "Boot[0-9A-Fa-f]*" | head -1 | sed 's/^Boot\*//' | sed 's/^Boot//')
+    BOOT_ENTRY=$(echo "$efi_output" | grep "USB.*PART 1" | grep -o "Boot[0-9A-Fa-f]*" | head -1 | sed 's/^Boot\*//' | sed 's/^Boot//') || true
     if [ -z "$BOOT_ENTRY" ]; then
         echo "ERROR: No USB installer (PART 1) detected on $HOST. Is a USB plugged in?"
         echo "       Available entries:"
