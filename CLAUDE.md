@@ -64,7 +64,8 @@ Retired drives:
 - NTP clock sync during install (fixes bad BIOS clock, ensures correct time from first boot)
 - IPv6 disabled on installed system (GRUB_CMDLINE_LINUX="ipv6.disable=1" + update-grub)
 - Instant GRUB boot on installed system (GRUB_TIMEOUT=0 + GRUB_TIMEOUT_STYLE=hidden via late_command)
-- Remote reinstall via `efibootmgr --bootnext` (no physical access needed)
+- Remote reinstall via `efibootmgr --bootnext` (no physical access needed), including back-to-back reinstalls
+- CD eject disabled (`cdrom-detect/eject false`) — prevents USB from entering degraded state after install
 - Works with both DVD and netinst ISOs (netinst is default)
 
 ## Boot Parameters
@@ -182,7 +183,7 @@ d-i grub-installer/force-efi-extra-removable boolean true
 # - Instant GRUB boot (GRUB_TIMEOUT=0 + GRUB_TIMEOUT_STYLE=hidden)
 
 ### Finish
-d-i cdrom-detect/eject boolean true
+d-i cdrom-detect/eject boolean false
 d-i finish-install/reboot_in_progress note
 ```
 
@@ -294,3 +295,4 @@ EFI boot entry auto-detection: the script queries `efibootmgr` on the target hos
 18. **Stale EFI entries persist until reboot.** After removing a USB drive, its EFI boot entry remains in NVRAM until the next reboot. Cross-check with `lsblk` for actual removable disk presence before trusting an EFI entry.
 19. **Poll loops must sleep on SSH failure.** When polling for a host to come back after reinstall, an SSH connection failure should still sleep before retrying. Without the sleep, the loop spins thousands of times per minute. Use `|| { sleep "$POLL_INTERVAL"; continue; }` pattern.
 20. **Uptime gate for fresh install detection.** After reinstall, wait for SSH to return AND verify uptime < 5 minutes. This prevents false positives from the old system coming back briefly before the installer takes over.
+21. **`cdrom-detect/eject true` breaks USB after install.** The installer's CD eject leaves the USB drive in a degraded state (detected but 0B size). A warm reboot doesn't recover it — only a power cycle or physical reseat does. This breaks back-to-back reinstalls because the firmware can't read the drive to create EFI boot entries, and `lsblk` shows no valid removable disk. Fix: set `cdrom-detect/eject boolean false`.
