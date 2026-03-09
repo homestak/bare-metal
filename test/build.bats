@@ -135,7 +135,10 @@ setup() {
 }
 
 @test "missing preseed file fails" {
-    run "$BUILD" --preseed /tmp/nonexistent.cfg
+    local tmp_iso
+    tmp_iso=$(mktemp /tmp/fake-XXXXXX.iso)
+    run "$BUILD" --source-iso "$tmp_iso" --preseed /tmp/nonexistent.cfg
+    rm -f "$tmp_iso"
     [ "$status" -eq 1 ]
     [[ "$output" == *"Preseed file not found"* ]]
 }
