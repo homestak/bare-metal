@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install bats
-        run: sudo apt-get install -y bats
+      - name: Install dependencies
+        run: sudo apt-get install -y bats xorriso isolinux cpio gzip
       - name: Run tests
         run: bats test/
