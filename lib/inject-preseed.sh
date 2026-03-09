@@ -15,6 +15,7 @@ inject_preseed() {
     # Substitute secrets from .secrets into the preseed copy
     local secrets="$SCRIPT_DIR/.secrets"
     if [ -f "$secrets" ]; then
+        # shellcheck source=/dev/null
         source "$secrets"
         sed -i \
             -e "s|CHANGEME_ROOT_HASH|${ROOT_PASSWORD_HASH}|g" \
@@ -43,7 +44,7 @@ inject_preseed() {
     local key_count=0 files_to_inject="preseed.cfg"
     if compgen -G "$SCRIPT_DIR/keys/*.pub" >/dev/null; then
         cat "$SCRIPT_DIR"/keys/*.pub > "$WORK_DIR/initrd-inject/authorized_keys"
-        key_count=$(ls -1 "$SCRIPT_DIR"/keys/*.pub | wc -l)
+        key_count=$(find "$SCRIPT_DIR/keys" -name '*.pub' | wc -l)
         files_to_inject="preseed.cfg
 authorized_keys"
         echo "    Found $key_count SSH public key(s) in keys/"
@@ -51,7 +52,8 @@ authorized_keys"
         echo "    WARNING: No .pub files found in keys/ — no authorized_keys will be installed"
     fi
 
-    cd "$WORK_DIR/initrd-inject"
+    cd "$WORK_DIR/initrd-inject" || return 1
+    # shellcheck disable=SC2086
     printf '%s\n' $files_to_inject | cpio -o -H newc 2>/dev/null | gzip > "$WORK_DIR/preseed.cpio.gz"
 
     for initrd in install.amd/initrd.gz install.amd/gtk/initrd.gz; do
@@ -60,5 +62,5 @@ authorized_keys"
             echo "    Injected into $initrd"
         fi
     done
-    cd "$SCRIPT_DIR"
+    cd "$SCRIPT_DIR" || return 1
 }

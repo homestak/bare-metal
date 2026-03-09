@@ -13,10 +13,12 @@ apt-mark showmanual > "$OUTDIR/manual-packages.txt"
 dpkg --get-selections > "$OUTDIR/all-packages.txt"
 
 echo "Extracting system config..."
-echo "Timezone: $(timedatectl show --property=Timezone --value)" > "$OUTDIR/system-info.txt"
-echo "Locale: $(cat /etc/default/locale 2>/dev/null || localectl show --property=LANG --value)" >> "$OUTDIR/system-info.txt"
-echo "Hostname: $(hostname)" >> "$OUTDIR/system-info.txt"
-echo "Domain: $(dnsdomainname 2>/dev/null || echo 'none')" >> "$OUTDIR/system-info.txt"
+{
+    echo "Timezone: $(timedatectl show --property=Timezone --value)"
+    echo "Locale: $(cat /etc/default/locale 2>/dev/null || localectl show --property=LANG --value)"
+    echo "Hostname: $(hostname)"
+    echo "Domain: $(dnsdomainname 2>/dev/null || echo 'none')"
+} > "$OUTDIR/system-info.txt"
 
 echo "Disk layout..."
 lsblk -f > "$OUTDIR/disk-layout.txt"

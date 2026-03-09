@@ -4,7 +4,7 @@
 extract_iso() {
     echo "=== Extracting ISO to $WORK_DIR/isofiles ..."
     mkdir -p "$WORK_DIR/isofiles"
-    xorriso $XORRISO_QUIET -osirrox on -indev "$SOURCE_ISO" -extract / "$WORK_DIR/isofiles"
+    xorriso ${XORRISO_QUIET:+"$XORRISO_QUIET"} -osirrox on -indev "$SOURCE_ISO" -extract / "$WORK_DIR/isofiles"
     chmod -R u+w "$WORK_DIR/isofiles"
 
     # Replace splash image if present
@@ -19,7 +19,7 @@ extract_iso() {
 
 rebuild_iso() {
     echo "=== Rebuilding ISO as $OUTPUT_ISO ..."
-    xorriso $XORRISO_QUIET -as mkisofs \
+    xorriso ${XORRISO_QUIET:+"$XORRISO_QUIET"} -as mkisofs \
         -o "$OUTPUT_ISO" \
         -isohybrid-mbr /usr/lib/ISOLINUX/isohdpfx.bin \
         -c isolinux/boot.cat \
