@@ -1,3 +1,4 @@
 iso/
 .secrets
 keys/*.pub
+CLAUDE.local.md
