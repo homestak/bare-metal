@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## v0.55 - 2026-03-08
+
 ### Added
 - ISO remaster tooling for Debian 13 with preseed injection
 - Remote reinstall via `efibootmgr --bootnext` (no physical access needed)
