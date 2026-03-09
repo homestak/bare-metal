@@ -82,17 +82,6 @@ auto=true priority=critical ipv6.disable=1 preseed/file=/preseed.cfg --- quiet
 
 Key preseed sections: localization, keyboard, network, partman (dynamic disk selection via `early_command`), mirror, clock, partitioning (atomic: EFI + swap + root), account setup (CHANGEME placeholders), packages (standard task + extras), GRUB, late_command (SSH, sudo, authorized_keys, IPv6 disable, instant boot).
 
-## Operational Context
-
-### Hosts
-- **father** — build machine (Debian 13, ZFS on NVMe, PVE)
-- **mother** — target machine (Intel NUC7i7BNB, 32GB DDR4, 275GB SSD + 4TB ZFS)
-
-### USB Devices (father)
-- **Red** (serial 23061806330192, ~30 MB/s) — auto/netinst
-- **Green** (serial 23061677640013, ~15 MB/s) — confirm/netinst
-- **Blue** (serial 23061806320148) — confirm/DVD
-
 ## Debugging Tips
 
 - `Alt+F2` on installer console gives a shell
