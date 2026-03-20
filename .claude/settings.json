@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "__ Lint and test __",
+      "Bash(shellcheck *)",
+      "Bash(bats *)",
+
+      "__ Build __",
+      "Bash(make *)",
+
+      "__ Claude Code tools __",
+      "Read",
+      "Edit",
+      "Write"
+    ],
+    "deny": [
+      "Bash(./build *)",
+      "Bash(./reinstall *)"
+    ]
+  }
+}
