@@ -2,7 +2,26 @@
 
 Automated Debian 13 (Trixie) installation via preseed ISO remastering. Day 0 of the homestak user journey: bare hardware to Debian in a single boot.
 
-For project vision, architecture, and development guidance, see [meta/CLAUDE.md](https://github.com/homestak-dev/meta/blob/master/CLAUDE.md).
+## Ecosystem Context
+
+This repo is part of the homestak polyrepo workspace. For project architecture,
+development lifecycle, sprint/release process, and cross-repo conventions, see:
+
+- `~/homestak/dev/meta/CLAUDE.md` — primary reference
+- `docs/lifecycle/` in meta — 7-phase development process
+- `docs/CLAUDE-GUIDELINES.md` in meta — documentation standards
+
+When working in a scoped session (this repo only), follow the same sprint/release
+process defined in meta. Use `/session save` before context compaction and
+`/session resume` to restore state in new sessions.
+
+### Agent Boundaries
+
+This agent operates within the following constraints:
+
+- Opens PRs via `homestak-bot`; never merges without human approval
+- Runs lint and validation tools only; never executes infrastructure operations
+- Never runs `./build` or `./reinstall`; ISO creation and physical media writes are human-initiated
 
 ## Quick Reference
 

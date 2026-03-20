@@ -2,3 +2,6 @@ iso/
 .secrets
 keys/*.pub
 CLAUDE.local.md
+
+# Claude Code local settings
+.claude/settings.local.json
